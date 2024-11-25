@@ -234,7 +234,7 @@ async def answer_test_q1(callback_query: types.CallbackQuery, state: FSMContext)
 async def send_test_question2(message: types.Message, state: FSMContext):
     question = "2. Какие показатели рекламы говорят о её эффективности?\n\
 1️⃣ CTR 6%, ДРР 23%, CPC 61₽\n\
-2️ CTR 13%, ДРР 3%, CPC 7₽\n\
+2️⃣ CTR 13%, ДРР 3%, CPC 7₽\n\
 3️⃣ CTR 16%, ДРР 10%, CPC 186₽"
     options = [
         InlineKeyboardButton(text="1️⃣", callback_data="q2_1"),
