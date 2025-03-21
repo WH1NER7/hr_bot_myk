@@ -34,6 +34,36 @@ dp.include_router(accountant_router)
 dp.include_router(manager_router)
 
 
+# Список администраторов
+ADMIN_IDS = [615742233]
+
+
+# В обработчике команды /send
+@dp.message(Command('send'))
+async def send_to_user(message: types.Message):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("❌ Недостаточно прав")
+        return
+
+    try:
+        # Парсим аргументы с учетом экранирования
+        args = message.text.split(maxsplit=2)
+        user_id = int(args[1])
+        raw_text = args[2]
+
+        # Обрабатываем экранирование
+        text = raw_text.replace('\\n', '\n').replace('\\t', '\t')
+
+        await bot.send_message(chat_id=user_id, text=text)
+        await message.answer(f"✅ Сообщение отправлено пользователю {user_id}")
+
+    except IndexError:
+        await message.answer("❌ Неверный формат команды\nПример: /send 123456 Привет\\nКак дела?")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}")
+
+
+# Добавьте вызов в main()
 async def main():
     try:
         await dp.start_polling(bot)
