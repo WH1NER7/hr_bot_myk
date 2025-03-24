@@ -1,5 +1,7 @@
 import asyncio
+from datetime import datetime
 
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 from aiogram import F, types
 
@@ -13,6 +15,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram import Router
 accountant_router = Router()
 
+
 # Определение состояний
 class AccountantStates(StatesGroup):
     Vacancy = State()
@@ -23,6 +26,7 @@ class AccountantStates(StatesGroup):
     Q5 = State()
     Q6 = State()
     Q7 = State()
+    GET_CONTACT = State()
     TestQ1 = State()
     TestQ2 = State()
     TestQ3 = State()
@@ -59,6 +63,7 @@ correct_answers = {
     '3': '3',
     '4': '2'
 }
+
 
 # Хендлер для нажатия на кнопку "О бренде"
 @accountant_router.callback_query(F.data == "vacancy_accountant")
@@ -130,7 +135,6 @@ async def start_test(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.answer()
 
 
-
 # Хендлеры для вопросов о себе
 @accountant_router.message(AccountantStates.Q1)
 async def answer_q1(message: types.Message, state: FSMContext):
@@ -181,15 +185,16 @@ async def answer_q5(message: types.Message, state: FSMContext):
 
 
 @accountant_router.message(AccountantStates.Q7)
-async def answer_q6(message: types.Message, state: FSMContext):
-    answer6 = message.text
-    await state.update_data(buh_otchet=answer6)
+async def answer_q7(message: types.Message, state: FSMContext):
+    answer7 = message.text
+    await state.update_data(buh_otchet=answer7)
+
     await message.answer(
-        "Спасибо за ваши ответы! Теперь пройдите небольшой тест по базовым компетенциям для работы на маркетплейсах! Он поможет нам лучше понять ваш уровень 🔍"
+        "Спасибо за ваши ответы!\nТеперь пройдите небольшой тест по базовым компетенциям для работы.\n"
+        "Он поможет нам лучше понять ваш уровень 🔍",
     )
     await asyncio.sleep(2)
-    # Начинаем тестовые вопросы
-    await send_test_question1(message, state)
+    await send_test_question1(message, state)  # Начинаем тест
 
 
 # Функции для отправки тестовых вопросов и обработки ответов
@@ -285,34 +290,79 @@ async def send_test_question4(message: types.Message, state: FSMContext):
 async def answer_test_q5(callback_query: types.CallbackQuery, state: FSMContext):
     user_choice = callback_query.data.split('_')[1]
     user_data['q4'] = user_choice
+    await state.update_data(q4=user_choice)
     await callback_query.answer()
     await finish_test(callback_query.message, state)
 
 
 # Завершение теста и подсчет результатов
 async def finish_test(message: types.Message, state: FSMContext):
-    # Получаем данные из состояния
     data = await state.get_data()
-    data['vacancy'] = data.get('vacancy', 'unknown')
-    # Подсчет правильных ответов
+
+    # Подсчет результатов
     score = 0
     for i in range(1, 5):
         if user_data.get(f'q{i}') == correct_answers[str(i)]:
             score += 1
-    result_text = f"Тест завершен! Вы набрали {score} из 4 баллов.\n\n\
-🙏 Спасибо за твое время и интерес к нашему бренду!\n\
-Мы свяжемся с тобой в ближайшее время.\n\n\
-Если у тебя возникнут дополнительные вопросы, не стесняйся их задавать нашему HR!\n\
-\n\
-Контакт: @polyyybbr"
-    await message.edit_text(result_text)
-    # Добавляем баллы и информацию о пользователе
 
-    data['test_score'] = score
-    data['user_id'] = message.chat.id
-    data['username'] = message.chat.username
-    data['first_name'] = message.chat.first_name
-    # Сохраняем данные в базу данных
-    database.save_user_data(data)
-    # Очистка состояния
+        # Создаем клавиатуру с кнопкой запроса контакта
+    contact_keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Поделиться контактом ✅", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+    # Формируем результат с инлайн-кнопкой
+    result_text = (
+        f"Тест завершен! Вы набрали {score} из 4 баллов.\n\n"
+        "🙏 Спасибо за твое время и интерес к нашему бренду!\n"
+        "Пожалуйста оставьте свои контактные данные нажав на кнопку \"Поделиться контактом\" и мы свяжемся с тобой в ближайшее время.\n\n"
+        "Если у тебя возникнут дополнительные вопросы, не стесняйся их задавать нашему HR!\n\n"
+        "Контакт: @polyyybbr"
+    )
+
+    # Отправляем сообщение с результатом и кнопкой
+    await message.answer(
+        result_text,
+        reply_markup=contact_keyboard
+    )
+
+    # Устанавливаем состояние для ожидания контакта
+    await state.set_state(AccountantStates.GET_CONTACT)
+    await state.update_data(test_score=score)
+
+
+@accountant_router.message(AccountantStates.GET_CONTACT, F.contact)
+async def get_contact_after_test(message: types.Message, state: FSMContext):
+    contact = message.contact
+    data = await state.get_data()
+
+    # Сохраняем все данные в БД
+    database.save_user_data({
+        **data,
+        'phone_number': contact.phone_number,
+        'telegram_user_id': contact.user_id,
+        'first_name': contact.first_name,
+        'last_name': contact.last_name,
+        'chat_id': message.chat.id,
+        'username': message.chat.username,
+        'completed_at': datetime.now().isoformat()
+    })
+
+    await message.answer(
+        "✅ Спасибо! Все данные успешно сохранены.\n"
+        "Мы свяжемся с вами в ближайшее время!",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
     await state.clear()
+
+
+@accountant_router.message(AccountantStates.GET_CONTACT)
+async def contact_not_provided(message: types.Message):
+    await message.answer(
+        "❌ Необходимо поделиться контактом для завершения процесса",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="Поделиться контактом ✅", request_contact=True)]],
+            resize_keyboard=True
+        )
+    )
